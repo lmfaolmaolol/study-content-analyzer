@@ -4,6 +4,47 @@ const { analyzeTextUsingGemini } = require('../utils/geminiClient');
 const { getYoutubeTranscript } = require('../utils/youtubeClient');
 const StudyContent = require('../models/StudyContent');
 
+// Validation middleware
+const validateInput = (req, res, next) => {
+    const { text, youtubeUrl } = req.body;
+    
+    // Validate text input
+    if (text && typeof text !== 'string') {
+        return res.status(400).json({ 
+            success: false,
+            error: 'Text input must be a string'
+        });
+    }
+    
+    // Validate YouTube URL
+    if (youtubeUrl) {
+        try {
+            const url = new URL(youtubeUrl);
+            if (!['www.youtube.com', 'youtube.com', 'youtu.be'].includes(url.hostname)) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Invalid YouTube URL'
+                });
+            }
+        } catch (error) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid URL format'
+            });
+        }
+    }
+    
+    // Validate content length
+    if (text && text.length > 10000) {
+        return res.status(400).json({
+            success: false,
+            error: 'Text input too long (max 10,000 characters)'
+        });
+    }
+    
+    next();
+};
+
 // Helper function to preprocess text
 function preprocessText(text) {
     try {
@@ -28,7 +69,7 @@ function checkEnvironmentVariables() {
 }
 
 // Text analysis endpoint
-router.post('/analyze', async (req, res) => {
+router.post('/analyze', validateInput, async (req, res) => {
     console.log('Received analysis request');
     
     try {
