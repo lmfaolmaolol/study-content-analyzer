@@ -3,6 +3,27 @@
 // Constants
 const CATEGORIES = ['procedural', 'analogous', 'conceptual', 'evidence', 'reference'];
 
+// Input validation functions
+const inputValidation = {
+    validateText: function(text) {
+        if (!text) return 'Please enter some text';
+        if (text.length > 10000) return 'Text is too long (max 10,000 characters)';
+        return null;
+    },
+    validateYouTubeUrl: function(url) {
+        if (!url) return 'Please enter a YouTube URL';
+        try {
+            const urlObj = new URL(url);
+            if (!['www.youtube.com', 'youtube.com', 'youtu.be'].includes(urlObj.hostname)) {
+                return 'Invalid YouTube URL';
+            }
+            return null;
+        } catch (error) {
+            return 'Invalid URL format';
+        }
+    }
+};
+
 // DOM Elements
 let elements;
 
@@ -155,9 +176,28 @@ function updateUIWithAnalysis(data) {
 async function handleAnalysis() {
     const text = elements.studyText.value.trim();
     const youtubeUrl = elements.youtubeUrl.value.trim();
-
+    
+    // Validate inputs
+    const textError = text ? inputValidation.validateText(text) : null;
+    const youtubeError = youtubeUrl ? inputValidation.validateYouTubeUrl(youtubeUrl) : null;
+    
     if (!text && !youtubeUrl) {
         showError('Please enter either text or a YouTube URL');
+        return;
+    }
+    
+    if (text && youtubeUrl) {
+        showError('Please provide either text or YouTube URL, not both');
+        return;
+    }
+    
+    if (text && textError) {
+        showError(textError);
+        return;
+    }
+    
+    if (youtubeUrl && youtubeError) {
+        showError(youtubeError);
         return;
     }
 
