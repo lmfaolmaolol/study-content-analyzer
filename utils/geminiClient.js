@@ -79,12 +79,10 @@ async function analyzeTextUsingGemini(text) {
         // Try to extract JSON
         let jsonText = responseText;
         
-        // If response contains multiple JSON objects, take the first complete one
-        const firstBrace = responseText.indexOf('{');
-        const lastBrace = responseText.lastIndexOf('}');
-        
-        if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
-            jsonText = responseText.substring(firstBrace, lastBrace + 1);
+        // Extract JSON using regex
+        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+            jsonText = jsonMatch[0];
         } else {
             throw new Error('No valid JSON object found in response');
         }
