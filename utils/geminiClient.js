@@ -1,7 +1,7 @@
 const { GoogleGenerativeAI } = require("@google/generative-ai");
 
 // Separate the prompt template for better maintainability
-const ANALYSIS_PROMPT_TEMPLATE = `Analyze the text and return a JSON object with this EXACT structure:
+const ANALYSIS_PROMPT_TEMPLATE = `Analyze the text and return ONLY a valid JSON object with this EXACT structure:
 
 {
   "originalText": "{text}",
@@ -38,11 +38,12 @@ const ANALYSIS_PROMPT_TEMPLATE = `Analyze the text and return a JSON object with
 }
 
 Rules:
-1. Return ONLY the JSON object above
-2. Keep each content under 100 characters
-3. Use only basic ASCII characters
-4. Include 1-3 entries per category
-5. Do not add any explanation text
+1. Return ONLY valid JSON without any formatting or markdown
+2. Ensure proper JSON escaping for quotes and special characters
+3. Keep each content under 100 characters
+4. Use only basic ASCII characters
+5. Include 1-3 entries per category
+6. Do not add any explanation text
 
 Text to analyze: {text}`;
 
@@ -56,8 +57,7 @@ async function analyzeTextUsingGemini(text) {
             temperature: 0.1,
             topP: 0.1,
             topK: 16,
-            maxOutputTokens: 2048,
-            stopSequences: ["\n\n", "```"]
+            maxOutputTokens: 2048
         };
 
         console.log('Sending request to Gemini API...');
@@ -71,48 +71,54 @@ async function analyzeTextUsingGemini(text) {
         }
 
         console.log('Received response from Gemini API');
-        let responseText = result.response.text().trim();
+        let jsonText = result.response.text().trim();
         
         // Log raw response for debugging
-        console.log('Raw response:', responseText);
+        console.log('Raw response:', jsonText);
 
-        // Try to extract JSON
-        let jsonText = responseText;
-        
-        // Extract JSON using regex
-        const jsonMatch = responseText.match(/\{[\s\S]*\}/);
-        if (jsonMatch) {
-            jsonText = jsonMatch[0];
-        } else {
-            throw new Error('No valid JSON object found in response');
-        }
-
-        // Clean up the JSON string
+        // Remove markdown code blocks if present
         jsonText = jsonText
-            .replace(/[\u0000-\u001F\u007F-\u009F]/g, '')  // Remove control chars
-            .replace(/\\[^"\\\/bfnrtu]/g, '')              // Remove invalid escapes
-            .replace(/([^\\])"/g, '$1\\"')                 // Escape unescaped quotes
-            .replace(/^\\"/, '"')                          // Fix first quote if escaped
-            .replace(/\\"/g, '"')                          // Normalize quotes
-            .replace(/\s+/g, ' ')                          // Normalize whitespace
+            .replace(/^```json/g, '')
+            .replace(/```$/g, '')
             .trim();
 
-        // Try to parse the cleaned JSON
+        // Handle case where response has text wrapping the JSON
+        const jsonMatch = jsonText.match(/(\{[\s\S]*\})/);
+        if (!jsonMatch) {
+            console.error('JSON match failed. Full response:', jsonText);
+            throw new Error('No valid JSON object found in response');
+        }
+        jsonText = jsonMatch[1];
+
+        // Improved cleaning pipeline
+        jsonText = jsonText
+            .replace(/\\\"/g, '"')         // Unescape quotes
+            .replace(/[\u0000-\u001F]/g, '') // Remove control chars
+            .replace(/(\\n|\\t)/g, ' ')     // Replace escaped whitespace
+            .replace(/\s+/g, ' ')          // Normalize whitespace
+            .trim();
+
+        // Validate JSON structure before parsing
+        if (!jsonText.startsWith('{') || !jsonText.endsWith('}')) {
+            console.error('Invalid JSON boundaries:', jsonText);
+            throw new Error('Malformed JSON response');
+        }
+
+        console.log('Final cleaned JSON:', jsonText);  // Debug log
+
+        // Parse with reviver for safety
         let analysisResult;
         try {
-            analysisResult = JSON.parse(jsonText);
+            analysisResult = JSON.parse(jsonText, (k, v) => {
+                if (typeof v === 'string') {
+                    return v.replace(/[\u0000-\u001F]/g, '');
+                }
+                return v;
+            });
         } catch (parseError) {
-            console.error('First parse attempt failed:', parseError);
-            console.error('Attempted to parse:', jsonText);
-            
-            // Try more aggressive cleaning if first attempt fails
-            jsonText = jsonText.replace(/[^\x20-\x7E]/g, '');
-            try {
-                analysisResult = JSON.parse(jsonText);
-            } catch (e) {
-                console.error('Second parse attempt failed:', e);
-                throw new Error('Failed to parse Gemini response as JSON');
-            }
+            console.error('JSON parse error:', parseError.message);
+            console.error('Failed JSON text:', jsonText);
+            throw new Error('Failed to parse valid JSON from response');
         }
 
         // Validate and ensure required fields

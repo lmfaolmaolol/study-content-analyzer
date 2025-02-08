@@ -106,6 +106,12 @@ router.post('/analyze', validateInput, async (req, res) => {
             throw new Error('Failed to process input content');
         }
 
+        // Truncate long text
+        if (contentToAnalyze.length > 15000) {
+            console.log('Truncating long text input');
+            contentToAnalyze = contentToAnalyze.substring(0, 15000) + '...';
+        }
+
         // Analyze content
         console.log('Analyzing content...');
         const analysis = await analyzeTextUsingGemini(contentToAnalyze);
